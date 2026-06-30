@@ -17,11 +17,15 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "FavoritesStore.h"
+#include "FavoritesActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ReadingStatsManager.h"
+#include "util/JourneyManager.h"
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 4;  // File Browser, Recents, File transfer, Settings
+  int count = 5;  // File Browser, Recents, Favorites, File transfer, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -119,6 +123,8 @@ void HomeActivity::onEnter() {
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
 
+  pendingMilestone = JourneyManager::getInstance().checkNewMilestones();
+
   // Trigger first update
   requestUpdate();
 }
@@ -167,6 +173,14 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  if (pendingMilestone != JourneyManager::MILESTONE_NONE) {
+    if (mappedInput.wasAnyReleased()) {
+      pendingMilestone = JourneyManager::MILESTONE_NONE;
+      requestUpdate();
+    }
+    return;
+  }
+
   const int menuCount = getMenuItemCount();
 
   buttonNavigator.onNext([this, menuCount] {
@@ -191,6 +205,9 @@ void HomeActivity::loop() {
         case HomeMenuItem::RECENTS:
           onRecentsOpen();
           break;
+        case HomeMenuItem::FAVORITES:
+          onFavoritesOpen();
+          break;
         case HomeMenuItem::OPDS_BROWSER:
           onOpdsBrowserOpen();
           break;
@@ -207,7 +224,26 @@ void HomeActivity::loop() {
   }
 }
 
-void HomeActivity::render(RenderLock&&) {
+void HomeActivity::render(RenderLock&& lock) {
+  if (pendingMilestone != JourneyManager::MILESTONE_NONE) {
+    renderer.clearScreen();
+    StrId milestoneStrId = StrId::STR_MILESTONE_FIRST_PAGE;
+    switch (pendingMilestone) {
+      case JourneyManager::MILESTONE_FIRST_PAGE: milestoneStrId = StrId::STR_MILESTONE_FIRST_PAGE; break;
+      case JourneyManager::MILESTONE_3_DAY_STREAK: milestoneStrId = StrId::STR_MILESTONE_3_DAY_STREAK; break;
+      case JourneyManager::MILESTONE_100_PAGES: milestoneStrId = StrId::STR_MILESTONE_100_PAGES; break;
+      case JourneyManager::MILESTONE_7_DAY_STREAK: milestoneStrId = StrId::STR_MILESTONE_7_DAY_STREAK; break;
+      case JourneyManager::MILESTONE_500_PAGES: milestoneStrId = StrId::STR_MILESTONE_500_PAGES; break;
+      case JourneyManager::MILESTONE_14_DAY_STREAK: milestoneStrId = StrId::STR_MILESTONE_14_DAY_STREAK; break;
+      case JourneyManager::MILESTONE_1000_PAGES: milestoneStrId = StrId::STR_MILESTONE_1000_PAGES; break;
+      case JourneyManager::MILESTONE_30_DAY_STREAK: milestoneStrId = StrId::STR_MILESTONE_30_DAY_STREAK; break;
+      default: break;
+    }
+    GUI.drawPopup(renderer, I18n::getInstance().get(milestoneStrId));
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    return;
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
@@ -231,9 +267,9 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
+  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_MENU_FAVORITES),
+                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Folder, Recent, Bookmark, Transfer, Settings};
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
@@ -246,15 +282,48 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
+  const int menuHeight = pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
+                                      metrics.homeMenuTopOffset + metrics.buttonHintsHeight) - 106;
+
   GUI.drawButtonMenu(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
+           menuHeight},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
+
+  // Draw Stats Box and Companion at the bottom
+  const int statsY = pageHeight - metrics.buttonHintsHeight - 106;
+  const auto& stats = ReadingStatsManager::getInstance();
+
+  if (SETTINGS.companionType != CrossPointSettings::COMPANION_NONE) {
+    const int companionSize = 128;
+    const int companionX = pageWidth - companionSize - metrics.contentSidePadding;
+    const int companionY = statsY + 5;
+
+    // Draw Stats Box
+    const int statsW = pageWidth - companionSize - metrics.contentSidePadding * 3;
+    GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
+                     stats.getCurrentStreak(), stats.getTotalPagesRead());
+
+    // Draw Companion
+    GUI.drawCompanion(renderer, companionX, companionY, companionSize);
+
+    // Draw Stage Quote above stats boxes
+    auto stage = JourneyManager::getInstance().getJourneyStage();
+    StrId quoteId = JourneyManager::getInstance().getStageTextId(stage);
+    const char* quoteStr = I18n::getInstance().get(quoteId);
+    int quoteW = renderer.getTextWidth(SMALL_FONT_ID, quoteStr);
+    int quoteX = metrics.contentSidePadding + (statsW - quoteW) / 2;
+    renderer.drawText(SMALL_FONT_ID, quoteX, statsY + 8, quoteStr);
+  } else {
+    // Draw Stats Box centered (full width)
+    const int statsW = pageWidth - metrics.contentSidePadding * 2;
+    GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
+                     stats.getCurrentStreak(), stats.getTotalPagesRead());
+  }
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -275,6 +344,8 @@ void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToR
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
+
+void HomeActivity::onFavoritesOpen() { activityManager.goToFavorites(); }
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 

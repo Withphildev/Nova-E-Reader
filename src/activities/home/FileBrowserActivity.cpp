@@ -11,6 +11,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "FavoritesStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
@@ -275,6 +276,21 @@ void FileBrowserActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+    if (!files.empty() && selectorIndex < files.size()) {
+      const std::string& entry = files[selectorIndex];
+      if (entry.back() != '/') {
+        std::string cleanBasePath = basepath;
+        if (cleanBasePath.back() != '/') cleanBasePath += "/";
+        FavoritesStore::getInstance().toggleFavorite(cleanBasePath + entry);
+        requestUpdate(true);
+        return;
+      }
+    }
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
@@ -369,7 +385,15 @@ void FileBrowserActivity::render(RenderLock&&) {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
         [this](int index) { return getFileName(files[index]); }, nullptr,
-        [this](int index) { return UITheme::getFileIcon(files[index]); },
+        [this](int index) {
+          std::string cleanBasePath = basepath;
+          if (cleanBasePath.back() != '/') cleanBasePath += "/";
+          std::string fullPath = cleanBasePath + files[index];
+          if (FavoritesStore::getInstance().isFavorite(fullPath)) {
+            return UIIcon::Bookmark;
+          }
+          return UITheme::getFileIcon(files[index]);
+        },
         [this](int index) { return getFileExtension(files[index]); }, false);
   }
 

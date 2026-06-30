@@ -9,6 +9,7 @@
 
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "FavoritesStore.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -61,6 +62,16 @@ void RecentBooksActivity::loop() {
     longPressFired = true;
     promptRemoveBook(recentBooks[selectorIndex].path, recentBooks[selectorIndex].title);
     return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+    if (!recentBooks.empty() && selectorIndex < recentBooks.size()) {
+      FavoritesStore::getInstance().toggleFavorite(recentBooks[selectorIndex].path);
+      requestUpdate(true);
+      return;
+    }
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -139,8 +150,14 @@ void RecentBooksActivity::render(RenderLock&&) {
   } else {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
-        [this](int index) { return recentBooks[index].title; }, [this](int index) { return recentBooks[index].author; },
-        [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); });
+        [this](int index) { return recentBooks[index].title; },
+        [this](int index) { return recentBooks[index].author; },
+        [this](int index) {
+          if (FavoritesStore::getInstance().isFavorite(recentBooks[index].path)) {
+            return UIIcon::Bookmark;
+          }
+          return UITheme::getFileIcon(recentBooks[index].path);
+        });
   }
 
   // Help text

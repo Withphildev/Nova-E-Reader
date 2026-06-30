@@ -4,6 +4,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <FsHelpers.h>
 #include <I18n.h>
 #include <Serialization.h>
 #include <Utf8.h>
@@ -16,12 +17,45 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ReadingStatsManager.h"
 
 namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
 constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format changes
+
+std::string cleanMarkdownLine(const std::string& input) {
+  std::string output;
+  output.reserve(input.size());
+  
+  bool startsWithSpace = (!input.empty() && (input[0] == ' ' || input[0] == '\t'));
+  
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(input.c_str());
+  while (*p) {
+    const uint32_t cp = utf8NextCodepoint(&p);
+    if (cp == 0) break;
+    
+    // Skip emojis & dingbats
+    if (cp >= 0x10000) continue;
+    if (cp >= 0x2600 && cp <= 0x27BF) continue;
+    if (cp == REPLACEMENT_GLYPH) continue;
+    
+    utf8AppendCodepoint(cp, output);
+  }
+  
+  // If the original input didn't start with a space, but our cleaned output starts with a space, trim it.
+  if (!startsWithSpace && !output.empty() && (output[0] == ' ' || output[0] == '\t')) {
+    size_t firstNonSpace = output.find_first_not_of(" \t");
+    if (firstNonSpace != std::string::npos) {
+      output = output.substr(firstNonSpace);
+    } else {
+      output.clear();
+    }
+  }
+  
+  return output;
+}
 }  // namespace
 
 void TxtReaderActivity::onEnter() {
@@ -48,6 +82,7 @@ void TxtReaderActivity::onEnter() {
 
 void TxtReaderActivity::onExit() {
   Activity::onExit();
+  ReadingStatsManager::getInstance().flush();
 
   // Reset orientation back to portrait for the rest of the UI
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
@@ -83,6 +118,7 @@ void TxtReaderActivity::loop() {
     requestUpdate();
   } else if (nextTriggered) {
     if (currentPage < totalPages - 1) {
+      ReadingStatsManager::getInstance().recordPageRead();
       currentPage++;
       requestUpdate();
     } else {
@@ -172,8 +208,12 @@ void TxtReaderActivity::buildPageIndex() {
   LOG_DBG("TRS", "Built page index: %d pages", totalPages);
 }
 
-bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset) {
+bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset,
+                                         std::vector<uint8_t>* outStyles) {
   outLines.clear();
+  if (outStyles) {
+    outStyles->clear();
+  }
   const size_t fileSize = txt->getFileSize();
 
   if (offset >= fileSize) {
@@ -195,18 +235,13 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
   buffer[chunkSize] = '\0';
 
   // Prime the SD card font's advance table with this chunk's codepoints.
-  // Without this, every getTextAdvanceX() call in the wrap loop below triggers
-  // on-demand glyph loads through the 8-slot overflow ring buffer, which
-  // thrashes for any text with more than 8 unique chars (i.e. all English),
-  // floods the heap with short-lived bitmap allocations, and eventually
-  // corrupts FreeRTOS state. The advance table persists across calls per
-  // font, so the cost amortizes to ~ASCII-size after the first chunk.
   if (renderer.isSdCardFont(cachedFontId)) {
-    renderer.ensureSdCardFontReady(cachedFontId, reinterpret_cast<const char*>(buffer), /*styleMask=*/0x01);
+    renderer.ensureSdCardFontReady(cachedFontId, reinterpret_cast<const char*>(buffer), /*styleMask=*/0x03);
   }
 
   // Parse lines from buffer
   size_t pos = 0;
+  bool isMarkdown = FsHelpers::hasMarkdownExtension(txt->getPath());
 
   while (pos < chunkSize && static_cast<int>(outLines.size()) < linesPerPage) {
     // Find end of line
@@ -233,6 +268,27 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
     // Extract line content for display (without CR/LF)
     std::string line(reinterpret_cast<char*>(buffer + pos), displayLen);
 
+    uint8_t style = STYLE_NORMAL;
+    if (isMarkdown) {
+      line = cleanMarkdownLine(line);
+      if (line == "---" || line == "***" || line == "___") {
+        style = STYLE_HR;
+        line.clear();
+      } else if (!line.empty() && line[0] == '#') {
+        size_t hLevel = 0;
+        while (hLevel < line.length() && line[hLevel] == '#') {
+          hLevel++;
+        }
+        if (hLevel > 0 && hLevel < line.length() && line[hLevel] == ' ') {
+          style = STYLE_HEADER;
+          line = line.substr(hLevel + 1);
+        }
+      } else if (line.rfind("- ", 0) == 0 || line.rfind("* ", 0) == 0 || line.rfind("+ ", 0) == 0) {
+        style = STYLE_BULLET;
+        line = "\xE2\x80\xA2 " + line.substr(2);
+      }
+    }
+
     // Track position within this source line (in bytes from pos)
     size_t lineBytePos = 0;
 
@@ -240,14 +296,27 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
     // then continue with wrapping when needed.
     do {
       if (line.empty()) {
-        outLines.emplace_back();
+        if (style == STYLE_HR) {
+          outLines.push_back("");
+          if (outStyles) outStyles->push_back(STYLE_HR);
+        } else {
+          outLines.emplace_back();
+          if (outStyles) outStyles->push_back(STYLE_NORMAL);
+        }
         break;
       }
 
-      int lineWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR);
+      EpdFontFamily::Style family = (style == STYLE_HEADER) ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+      int currentViewportWidth = viewportWidth;
+      if (style == STYLE_BULLET) {
+        currentViewportWidth = viewportWidth - 20;
+      }
 
-      if (lineWidth <= viewportWidth) {
+      int lineWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), family);
+
+      if (lineWidth <= currentViewportWidth) {
         outLines.push_back(line);
+        if (outStyles) outStyles->push_back(style);
         lineBytePos = displayLen;  // Consumed entire display content
         line.clear();
         break;
@@ -256,7 +325,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
       // Find break point
       size_t breakPos = line.length();
       while (breakPos > 0 && renderer.getTextAdvanceX(cachedFontId, line.substr(0, breakPos).c_str(),
-                                                      EpdFontFamily::REGULAR) > viewportWidth) {
+                                                      family) > currentViewportWidth) {
         // Try to break at space
         size_t spacePos = line.rfind(' ', breakPos - 1);
         if (spacePos != std::string::npos && spacePos > 0) {
@@ -276,6 +345,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
       }
 
       outLines.push_back(line.substr(0, breakPos));
+      if (outStyles) outStyles->push_back(style);
 
       // Skip space at break point
       size_t skipChars = breakPos;
@@ -292,7 +362,6 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
       pos = lineEnd + 1;
     } else {
       // Partially consumed - page is full mid-line
-      // Move pos to where we stopped in the line (NOT past the line)
       pos = pos + lineBytePos;
       break;
     }
@@ -300,7 +369,6 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, std::vector<std::string>
 
   // Ensure we make progress even if calculations go wrong
   if (pos == 0 && !outLines.empty()) {
-    // Fallback: at minimum, consume something to avoid infinite loop
     pos = 1;
   }
 
@@ -341,7 +409,8 @@ void TxtReaderActivity::render(RenderLock&&) {
   size_t offset = pageOffsets[currentPage];
   size_t nextOffset;
   currentPageLines.clear();
-  loadPageAtOffset(offset, currentPageLines, nextOffset);
+  currentPageLineStyles.clear();
+  loadPageAtOffset(offset, currentPageLines, nextOffset, &currentPageLineStyles);
 
   renderer.clearScreen();
   renderPage();
@@ -357,22 +426,36 @@ void TxtReaderActivity::renderPage() {
   // Render text lines with alignment
   auto renderLines = [&]() {
     int y = cachedOrientedMarginTop;
-    for (const auto& line : currentPageLines) {
-      if (!line.empty()) {
+    for (size_t i = 0; i < currentPageLines.size(); i++) {
+      const auto& line = currentPageLines[i];
+      uint8_t style = STYLE_NORMAL;
+      if (i < currentPageLineStyles.size()) {
+        style = currentPageLineStyles[i];
+      }
+
+      if (style == STYLE_HR) {
+        int lineY = y + lineHeight / 2;
+        renderer.drawLine(cachedOrientedMarginLeft, lineY, cachedOrientedMarginLeft + contentWidth, lineY, true);
+      } else if (!line.empty()) {
         int x = cachedOrientedMarginLeft;
+        EpdFontFamily::Style family = (style == STYLE_HEADER) ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+        if (style == STYLE_BULLET) {
+          x += 20;
+        }
+
         const bool lineIsRtl = BidiUtils::startsWithRtl(line.c_str(), BidiUtils::RTL_PARAGRAPH_PROBE_DEPTH);
         uint8_t effectiveAlignment = cachedParagraphAlignment;
         if (lineIsRtl && (effectiveAlignment == CrossPointSettings::LEFT_ALIGN ||
                           effectiveAlignment == CrossPointSettings::JUSTIFIED)) {
           effectiveAlignment = CrossPointSettings::RIGHT_ALIGN;
         }
-        const int textWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR);
+        const int textWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), family);
 
         // Apply text alignment
         switch (effectiveAlignment) {
           case CrossPointSettings::LEFT_ALIGN:
           default:
-            // x already set to left margin
+            // x already set
             break;
           case CrossPointSettings::CENTER_ALIGN: {
             x = cachedOrientedMarginLeft + (contentWidth - textWidth) / 2;
@@ -383,12 +466,10 @@ void TxtReaderActivity::renderPage() {
             break;
           }
           case CrossPointSettings::JUSTIFIED:
-            // For plain text, justified is treated as left-aligned
-            // (true justification would require word spacing adjustments)
             break;
         }
 
-        renderer.drawText(cachedFontId, x, y, line.c_str());
+        renderer.drawText(cachedFontId, x, y, line.c_str(), true, family);
       }
       y += lineHeight;
     }
@@ -430,6 +511,10 @@ void TxtReaderActivity::saveProgress() const {
   if (!ProgressFile::writeAtomic(txt->getCachePath(), data, sizeof(data))) {
     LOG_ERR("TRS", "Failed to save progress: page %d", currentPage);
   }
+
+  int progressPercent = totalPages > 0 ? static_cast<int>((currentPage + 1) * 100.0f / totalPages + 0.5f) : 0;
+  if (progressPercent > 100) progressPercent = 100;
+  RecentBooksStore::getInstance().updateProgress(txt->getPath(), progressPercent);
 }
 
 void TxtReaderActivity::loadProgress() {

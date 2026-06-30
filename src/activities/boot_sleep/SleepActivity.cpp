@@ -15,6 +15,8 @@
 #include "fontIds.h"
 #include "images/Logo120.h"
 #include "images/MoonIcon.h"
+#include "images/sleep_rooms.h"
+#include "util/JourneyManager.h"
 
 void SleepActivity::onEnter() {
   Activity::onEnter();
@@ -150,20 +152,14 @@ void SleepActivity::renderCustomSleepScreen() const {
 }
 
 void SleepActivity::renderDefaultSleepScreen() const {
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
+  const auto orig_orientation = renderer.getOrientation();
+  renderer.setOrientation(GfxRenderer::Orientation::LandscapeCounterClockwise);
 
   renderer.clearScreen();
-  renderer.drawImage(Logo120, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120, 120);
-  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, tr(STR_CROSSPOINT), true, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_SLEEPING));
-
-  // Make sleep screen dark unless light is selected in settings
-  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {
-    renderer.invertScreen();
-  }
+  renderer.drawImage(SleepRoomEmpty, 0, 0, 800, 480);
 
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.setOrientation(orig_orientation);
 }
 
 void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {

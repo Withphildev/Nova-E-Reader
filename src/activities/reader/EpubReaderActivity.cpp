@@ -19,6 +19,7 @@
 
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
+#include "util/ReadingStatsManager.h"
 #include "CrossPointState.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
@@ -205,6 +206,7 @@ void EpubReaderActivity::onEnter() {
 
 void EpubReaderActivity::onExit() {
   Activity::onExit();
+  ReadingStatsManager::getInstance().flush();
 
   // Reset orientation back to portrait for the rest of the UI
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
@@ -759,6 +761,7 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 
 void EpubReaderActivity::pageTurn(bool isForwardTurn) {
   if (isForwardTurn) {
+    ReadingStatsManager::getInstance().recordPageRead();
     if (section->currentPage < section->pageCount - 1) {
       section->currentPage++;
     } else {
@@ -1011,6 +1014,14 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
 }
 
 bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
+  float bookProgress = 0.0f;
+  if (pageCount > 0) {
+    const float chapterProgress = static_cast<float>(currentPage) / static_cast<float>(pageCount);
+    bookProgress = epub->calculateProgress(spineIndex, chapterProgress) * 100.0f;
+  }
+  const int bookProgressPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
+  RecentBooksStore::getInstance().updateProgress(epub->getPath(), bookProgressPercent);
+
   return EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount);
 }
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,

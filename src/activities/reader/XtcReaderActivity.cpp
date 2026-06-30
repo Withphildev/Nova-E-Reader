@@ -23,6 +23,7 @@
 #include "XtcReaderChapterSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ReadingStatsManager.h"
 
 void XtcReaderActivity::onEnter() {
   Activity::onEnter();
@@ -47,6 +48,7 @@ void XtcReaderActivity::onEnter() {
 
 void XtcReaderActivity::onExit() {
   Activity::onExit();
+  ReadingStatsManager::getInstance().flush();
 
   APP_STATE.readerActivityLoadCount = 0;
   APP_STATE.saveToFile();
@@ -108,6 +110,7 @@ void XtcReaderActivity::loop() {
     }
     requestUpdate();
   } else if (nextTriggered) {
+    ReadingStatsManager::getInstance().recordPageRead();
     currentPage += skipAmount;
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();  // Allow showing "End of book"
@@ -396,6 +399,10 @@ void XtcReaderActivity::saveProgress() const {
   if (!ProgressFile::writeAtomic(xtc->getCachePath(), data, sizeof(data))) {
     LOG_ERR("XTR", "Failed to save progress: page %lu", currentPage);
   }
+
+  int progressPercent = xtc->getPageCount() > 0 ? static_cast<int>(((currentPage + 1) * 100.0f) / xtc->getPageCount() + 0.5f) : 0;
+  if (progressPercent > 100) progressPercent = 100;
+  RecentBooksStore::getInstance().updateProgress(xtc->getPath(), progressPercent);
 }
 
 void XtcReaderActivity::loadProgress() {

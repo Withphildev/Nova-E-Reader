@@ -163,6 +163,9 @@ class CrossPointSettings {
   // UI Theme
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
 
+  // Companion Mascot
+  enum COMPANION_TYPE { COMPANION_NONE = 0, COMPANION_NOVA = 1, COMPANION_FOX = 2, COMPANION_WOLF = 3 };
+
   // Image rendering in EPUB reader
   enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
 
@@ -244,6 +247,8 @@ class CrossPointSettings {
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
   uint8_t uiTheme = LYRA;
+  // Companion Mascot Setting
+  uint8_t companionType = COMPANION_NOVA;
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)

@@ -218,6 +218,8 @@ class BaseTheme {
                                const char* secondaryLabel = nullptr, KeyboardKeyType keyType = KeyboardKeyType::Normal,
                                bool inactiveSelection = false) const;
   virtual bool showsFileIcons() const { return false; }
+  virtual void drawCompanion(const GfxRenderer& renderer, int x, int y, int size) const;
+  virtual void drawStatsBox(const GfxRenderer& renderer, Rect rect, uint32_t streak, uint32_t pages) const;
 
   // Shared constants and helpers for battery drawing (used by all themes)
   static constexpr int batteryPercentSpacing = 4;

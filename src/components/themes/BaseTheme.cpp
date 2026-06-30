@@ -15,6 +15,9 @@
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
 #include "fontIds.h"
+#include "CrossPointSettings.h"
+#include "components/icons/companions.h"
+#include "util/JourneyManager.h"
 
 // Internal constants
 namespace {
@@ -1004,4 +1007,93 @@ void BaseTheme::drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const ch
     renderer.drawText(SMALL_FONT_ID, rect.x + rect.width - secWidth - metrics.keyboardSecondaryLabelRightPadding,
                       rect.y + metrics.keyboardSecondaryLabelTopPadding, secondaryLabel, !invert);
   }
+}
+
+void BaseTheme::drawCompanion(const GfxRenderer& renderer, int x, int y, int size) const {
+  const uint8_t companionType = SETTINGS.companionType;
+  if (companionType == CrossPointSettings::COMPANION_NONE) {
+    return;
+  }
+
+  const uint8_t* bitmap = nullptr;
+  if (size == 128) {
+    if (companionType == CrossPointSettings::COMPANION_NOVA) {
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionNovaStage2_128; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionNovaStage3_128; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionNovaStage4_128; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionNovaStage5_128; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionNovaStage6_128; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionNovaStage7_128; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionNovaStage1_128; break;
+      }
+    } else if (companionType == CrossPointSettings::COMPANION_FOX) {
+      bitmap = CompanionFox96;
+      size = 96;
+    } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
+      bitmap = CompanionWolf96;
+      size = 96;
+    }
+  } else if (size == 96) {
+    if (companionType == CrossPointSettings::COMPANION_NOVA) {
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionNovaStage2_96; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionNovaStage3_96; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionNovaStage4_96; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionNovaStage5_96; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionNovaStage6_96; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionNovaStage7_96; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionNovaStage1_96; break;
+      }
+    } else if (companionType == CrossPointSettings::COMPANION_FOX) {
+      bitmap = CompanionFox96;
+    } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
+      bitmap = CompanionWolf96;
+    }
+  } else if (size == 32) {
+    if (companionType == CrossPointSettings::COMPANION_NOVA) {
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionNovaStage2_32; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionNovaStage3_32; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionNovaStage4_32; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionNovaStage5_32; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionNovaStage6_32; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionNovaStage7_32; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionNovaStage1_32; break;
+      }
+    } else if (companionType == CrossPointSettings::COMPANION_FOX) {
+      bitmap = CompanionFox32;
+    } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
+      bitmap = CompanionWolf32;
+    }
+  }
+
+  if (bitmap != nullptr) {
+    renderer.drawIcon(bitmap, x, y, size, size);
+  }
+}
+
+void BaseTheme::drawStatsBox(const GfxRenderer& renderer, Rect rect, uint32_t streak, uint32_t pages) const {
+  // Draw one centered box spanning the entire rect width
+  renderer.drawRect(rect.x, rect.y, rect.width, rect.height, 1, true);
+
+  // Render text for "Pages Read"
+  // Label
+  std::string pagesLabel = tr(STR_PAGES_READ);
+  int labelW = renderer.getTextWidth(SMALL_FONT_ID, pagesLabel.c_str());
+  int labelX = rect.x + (rect.width - labelW) / 2;
+  renderer.drawText(SMALL_FONT_ID, labelX, rect.y + 6, pagesLabel.c_str(), true);
+
+  // Value
+  char pagesValStr[32];
+  snprintf(pagesValStr, sizeof(pagesValStr), "%u", pages);
+  int valW = renderer.getTextWidth(UI_10_FONT_ID, pagesValStr, EpdFontFamily::BOLD);
+  int valX = rect.x + (rect.width - valW) / 2;
+  renderer.drawText(UI_10_FONT_ID, valX, rect.y + 26, pagesValStr, true, EpdFontFamily::BOLD);
 }

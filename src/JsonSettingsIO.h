@@ -6,6 +6,7 @@ class CrossPointSettings;
 class CrossPointState;
 class WifiCredentialStore;
 class RecentBooksStore;
+class FavoritesStore;
 class OpdsServerStore;
 struct BookmarkEntry;
 
@@ -26,6 +27,10 @@ bool loadWifi(WifiCredentialStore& store, const char* json, bool* needsResave = 
 // RecentBooksStore
 bool saveRecentBooks(const RecentBooksStore& store, const char* path);
 bool loadRecentBooks(RecentBooksStore& store, const char* json);
+
+// FavoritesStore
+bool saveFavorites(const FavoritesStore& store, const char* path);
+bool loadFavorites(FavoritesStore& store, const char* json);
 
 // OpdsServerStore
 bool saveOpds(const OpdsServerStore& store, const char* path);

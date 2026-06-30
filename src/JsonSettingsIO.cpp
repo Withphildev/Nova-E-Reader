@@ -13,6 +13,7 @@
 #include "CrossPointState.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "FavoritesStore.h"
 #include "SettingsList.h"
 #include "WifiCredentialStore.h"
 
@@ -328,6 +329,7 @@ bool JsonSettingsIO::saveRecentBooks(const RecentBooksStore& store, const char* 
     obj["title"] = book.title;
     obj["author"] = book.author;
     obj["coverBmpPath"] = book.coverBmpPath;
+    obj["progressPercent"] = book.progressPercent;
   }
 
   String json;
@@ -352,10 +354,54 @@ bool JsonSettingsIO::loadRecentBooks(RecentBooksStore& store, const char* json) 
     book.title = obj["title"] | std::string("");
     book.author = obj["author"] | std::string("");
     book.coverBmpPath = obj["coverBmpPath"] | std::string("");
+    book.progressPercent = obj["progressPercent"] | 0;
     store.recentBooks.push_back(book);
   }
 
   LOG_DBG("RBS", "Recent books loaded from file (%d entries)", store.getCount());
+  return true;
+}
+
+// ---- FavoritesStore ----
+
+bool JsonSettingsIO::saveFavorites(const FavoritesStore& store, const char* path) {
+  JsonDocument doc;
+  JsonArray arr = doc["favorites"].to<JsonArray>();
+  for (const auto& book : store.getFavorites()) {
+    JsonObject obj = arr.add<JsonObject>();
+    obj["path"] = book.path;
+    obj["title"] = book.title;
+    obj["author"] = book.author;
+    obj["coverBmpPath"] = book.coverBmpPath;
+    obj["progressPercent"] = book.progressPercent;
+  }
+
+  String json;
+  serializeJson(doc, json);
+  return Storage.writeFile(path, json);
+}
+
+bool JsonSettingsIO::loadFavorites(FavoritesStore& store, const char* json) {
+  JsonDocument doc;
+  auto error = deserializeJson(doc, json);
+  if (error) {
+    LOG_ERR("FAV", "JSON parse error: %s", error.c_str());
+    return false;
+  }
+
+  store.favorites.clear();
+  JsonArray arr = doc["favorites"].as<JsonArray>();
+  for (JsonObject obj : arr) {
+    RecentBook book;
+    book.path = obj["path"] | std::string("");
+    book.title = obj["title"] | std::string("");
+    book.author = obj["author"] | std::string("");
+    book.coverBmpPath = obj["coverBmpPath"] | std::string("");
+    book.progressPercent = obj["progressPercent"] | 0;
+    store.favorites.push_back(book);
+  }
+
+  LOG_DBG("FAV", "Favorites loaded from file (%d entries)", store.getCount());
   return true;
 }
 

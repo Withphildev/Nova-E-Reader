@@ -14,9 +14,17 @@ class TxtReaderActivity final : public Activity {
   int totalPages = 1;
   int pagesUntilFullRefresh = 0;
 
+  enum LineStyle : uint8_t {
+    STYLE_NORMAL = 0,
+    STYLE_HEADER = 1,
+    STYLE_HR = 2,
+    STYLE_BULLET = 3
+  };
+
   // Streaming text reader - stores file offsets for each page
   std::vector<size_t> pageOffsets;  // File offset for start of each page
   std::vector<std::string> currentPageLines;
+  std::vector<uint8_t> currentPageLineStyles;
   int linesPerPage = 0;
   int viewportWidth = 0;
   bool initialized = false;
@@ -34,7 +42,8 @@ class TxtReaderActivity final : public Activity {
   void renderStatusBar() const;
 
   void initializeReader();
-  bool loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset);
+  bool loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset,
+                        std::vector<uint8_t>* outStyles = nullptr);
   void buildPageIndex();
   bool loadPageIndexCache();
   void savePageIndexCache() const;

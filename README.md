@@ -6,7 +6,29 @@ CrossPoint is open-source e-reader firmware - community-built, fully hackable, f
 
 **Now running on:** ESP32C3-based Xteink [X4](https://www.xteink.com/products/xteink-x4) and [X3](https://www.xteink.com/products/xteink-x3).
 
-![CrossPoint Reader running on Xteink device](./docs/images/cover.jpg)
+---
+
+## 🌟 Custom Features (Withphildev's Nova Edition)
+
+This fork includes several quality-of-life additions, custom graphics, and layout enhancements tailored for the Xteink e-reader:
+
+### 1. Persistent Favorites System
+* **Home Screen Integration**: Access your most-read files instantly via the new **Favorites** tab (adorned with a bookmark icon) on the main Home menu.
+* **Instant Power Button Toggle**: Short-press the physical **Power button** on any highlighted book file to star/unstar it immediately from any list view.
+* **Visual Bookmark Icons**: Favorited books display with a high-contrast **Bookmark (flag) icon** at the left of the item row instead of the standard file icon.
+* **Persisted Storage**: Favorited items are saved in `/.crosspoint/favorites.json` and are restored automatically on boot.
+
+### 2. Rich Markdown (`.md`) Parser
+* Native support for standard Markdown files.
+* Implements formatting for headers (lines starting with `#` are rendered bold and enlarged).
+* Properly indents bullet-point lists (lines starting with `-`, `*`, or `+`).
+* Draws clean horizontal dividing lines for markdown separators (`---`).
+
+### 3. Custom Boot & Sleep Artwork
+* **Boot Screen**: Displays a custom full-screen morning wakeup scene illustration (`800x480` landscape pixels) on startup.
+* **Sleep Screen Progression**: Includes 5 custom transparent progression panel illustrations for the sleep screen, depicting your companion waking up and going through their day.
+
+---
 
 ## What can CrossPoint do?
 

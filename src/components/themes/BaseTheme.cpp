@@ -1059,13 +1059,37 @@ void BaseTheme::drawCompanion(const GfxRenderer& renderer, int x, int y, int siz
         return;
       }
     } else if (companionType == CrossPointSettings::COMPANION_FOX) {
-      bitmap = CompanionFox96;
-      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (224 - 96) / 2, 96, 96);
-      return;
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionFoxStage2_440; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionFoxStage3_440; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionFoxStage4_440; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionFoxStage5_440; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionFoxStage6_440; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionFoxStage7_440; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionFoxStage1_440; break;
+      }
+      if (bitmap != nullptr) {
+        renderer.drawIcon(bitmap, x, y, 440, 224);
+        return;
+      }
     } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
-      bitmap = CompanionWolf96;
-      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (224 - 96) / 2, 96, 96);
-      return;
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionWolfStage2_440; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionWolfStage3_440; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionWolfStage4_440; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionWolfStage5_440; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionWolfStage6_440; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionWolfStage7_440; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionWolfStage1_440; break;
+      }
+      if (bitmap != nullptr) {
+        renderer.drawIcon(bitmap, x, y, 440, 224);
+        return;
+      }
     }
     return;
   }

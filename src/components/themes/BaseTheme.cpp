@@ -1055,16 +1055,16 @@ void BaseTheme::drawCompanion(const GfxRenderer& renderer, int x, int y, int siz
         default: bitmap = CompanionNovaStage1_440; break;
       }
       if (bitmap != nullptr) {
-        renderer.drawIcon(bitmap, x, y, 440, 230);
+        renderer.drawIcon(bitmap, x, y, 440, 224);
         return;
       }
     } else if (companionType == CrossPointSettings::COMPANION_FOX) {
       bitmap = CompanionFox96;
-      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (230 - 96) / 2, 96, 96);
+      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (224 - 96) / 2, 96, 96);
       return;
     } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
       bitmap = CompanionWolf96;
-      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (230 - 96) / 2, 96, 96);
+      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (224 - 96) / 2, 96, 96);
       return;
     }
     return;

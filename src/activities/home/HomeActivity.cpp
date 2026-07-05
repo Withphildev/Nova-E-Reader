@@ -312,7 +312,7 @@ void HomeActivity::render(RenderLock&& lock) {
       const int bandTop = menuTop + menuHeight;
       const int bandBottom = pageHeight - metrics.buttonHintsHeight;
       constexpr int companionW = 440;
-      constexpr int companionH = 230;
+      constexpr int companionH = 224;
       const int companionX = (pageWidth - companionW) / 2;
       const int companionY = bandTop + std::max(0, (bandBottom - bandTop - companionH) / 2);
       GUI.drawCompanion(renderer, companionX, companionY, companionW);

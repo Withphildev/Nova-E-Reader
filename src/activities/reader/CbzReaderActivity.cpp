@@ -91,7 +91,7 @@ void CbzReaderActivity::onEnter() {
 void CbzReaderActivity::onExit() {
   Activity::onExit();
   archive.close();
-  // Clear screen on exit
+  // Clear screen on exit with HALF_REFRESH to remove ghosting
   renderer.clearScreen();
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
@@ -258,7 +258,8 @@ void CbzReaderActivity::renderPage() {
   // Render page number centered at the top/bottom
   renderer.drawCenteredText(UI_10_FONT_ID, renderer.getScreenHeight() - 32, pageStr);
 
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  // Using FAST_REFRESH for instant page response
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
 void CbzReaderActivity::pageTurn(bool isForward) {
@@ -370,6 +371,9 @@ void CbzReaderActivity::handleJpegDraw(JPEGDRAW *pDraw) {
       uint8_t b = (b5 << 3) | (b5 >> 2);
       uint8_t gray = (r * 77 + g * 150 + b * 29) >> 8;
 
+      // Darken midtones to boost contrast and prevent washout (gamma ~1.5)
+      gray = (gray + ((gray * gray) >> 8)) >> 1;
+
       // Bayer ordered dither using pre-scaled matrix B8_255
       bool pixelState = (gray < B8_255[destY_mod8][destX & 7]);
 
@@ -425,6 +429,9 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
     uint8_t g = (g6 << 2) | (g6 >> 4);
     uint8_t b = (b5 << 3) | (b5 >> 2);
     uint8_t gray = (r * 77 + g * 150 + b * 29) >> 8;
+
+    // Darken midtones to boost contrast and prevent washout (gamma ~1.5)
+    gray = (gray + ((gray * gray) >> 8)) >> 1;
 
     // Bayer ordered dither using pre-scaled matrix B8_255
     bool pixelState = (gray < B8_255[destY_mod8][destX & 7]);

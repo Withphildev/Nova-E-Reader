@@ -9,6 +9,7 @@
 #include "fontIds.h"
 #include <ZipFile.h>
 #include <memory>
+#include <cassert>
 
 CbzReaderActivity* CbzReaderActivity::activeInstance = nullptr;
 
@@ -52,8 +53,14 @@ void CbzReaderActivity::saveProgress() const {
 }
 
 void CbzReaderActivity::loadProgress() {
+  LOG_INF("CBZ", "loadProgress starting");
+  std::string cachePath = getCachePath();
+  LOG_INF("CBZ", "loadProgress cachePath resolved: %s", cachePath.c_str());
+  std::string fullPath = cachePath + "/progress.bin";
+  LOG_INF("CBZ", "loadProgress fullPath resolved: %s", fullPath.c_str());
   HalFile f;
-  if (Storage.openFileForRead("CBZ", getCachePath() + "/progress.bin", f)) {
+  LOG_INF("CBZ", "loadProgress calling Storage.openFileForRead");
+  if (Storage.openFileForRead("CBZ", fullPath, f)) {
     uint8_t data[4];
     if (f.read(data, 4) == 4) {
       currentFileIndex = data[0] + (data[1] << 8);
@@ -65,22 +72,28 @@ void CbzReaderActivity::loadProgress() {
 
 void CbzReaderActivity::onEnter() {
   Activity::onEnter();
+  LOG_INF("CBZ", "onEnter: entered");
 
   if (!archive.open(filePath)) {
     LOG_ERR("CBZ", "Failed to load CBZ archive: %s", filePath.c_str());
     finish();
     return;
   }
+  LOG_INF("CBZ", "onEnter: archive open returned true");
 
   loadProgress();
+  LOG_INF("CBZ", "onEnter: loadProgress complete, currentFileIndex=%d", currentFileIndex);
 
   if (currentFileIndex >= static_cast<int>(archive.getPageCount())) {
     currentFileIndex = 0;
     showRightHalf = false;
   }
 
+  LOG_INF("CBZ", "onEnter: calling preparePage");
   preparePage();
+  LOG_INF("CBZ", "onEnter: preparePage complete");
   renderPage();
+  LOG_INF("CBZ", "onEnter: renderPage complete");
 }
 
 void CbzReaderActivity::onExit() {
@@ -131,14 +144,17 @@ int32_t CbzReaderActivity::cbzPngSeek(PNGFILE *pFile, int32_t iPosition) {
 }
 
 void CbzReaderActivity::preparePage(bool goingBackward) {
+  LOG_INF("CBZ", "preparePage starting");
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
   // Extract to SD card
   if (!archive.extractPageToTempFile(currentFileIndex, tempPath)) {
     LOG_ERR("CBZ", "Failed to extract page index %d", currentFileIndex);
+    assert(false);
     return;
   }
 
+  LOG_INF("CBZ", "extractPageToTempFile complete. Checking file signature...");
   // Open the temp file to check signature
   bool isPng = false;
   HalFile file;
@@ -149,6 +165,7 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
     }
     file.close();
   }
+  LOG_INF("CBZ", "isPng = %d", (int)isPng);
 
   // Parse dimensions directly from headers (allocating decoders on heap to prevent stack overflow)
   isLandscape = false;
@@ -157,30 +174,32 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
 
   if (isPng) {
     auto png = std::make_unique<PNG>();
-    if (png->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
+    LOG_INF("CBZ", "png->open starting");
+    int pngOpenRes = png->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback);
+    LOG_INF("CBZ", "png->open result = %d", pngOpenRes);
+    if (pngOpenRes == PNG_SUCCESS) {
       imgWidth = png->getWidth();
       imgHeight = png->getHeight();
       png->close();
     }
   } else {
     auto jpeg = std::make_unique<JPEGDEC>();
-    if (jpeg->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
+    LOG_INF("CBZ", "jpeg->open starting");
+    int jpegOpenRes = jpeg->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback);
+    LOG_INF("CBZ", "jpeg->open result = %d", jpegOpenRes);
+    if (jpegOpenRes) {
       imgWidth = jpeg->getWidth();
       imgHeight = jpeg->getHeight();
       jpeg->close();
     }
   }
 
-  if (imgWidth > 0 && imgHeight > 0) {
-    isLandscape = (imgWidth > imgHeight);
-  }
-
-  if (goingBackward) {
-    showRightHalf = isLandscape;
-  }
+  LOG_INF("CBZ", "imgWidth = %d, imgHeight = %d", imgWidth, imgHeight);
+  assert(false); // FORCE CRASH TO SEE THE LOGS!
 }
 
 void CbzReaderActivity::renderPage() {
+  LOG_INF("CBZ", "renderPage starting");
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
   // Verify dimensions are known

@@ -32,6 +32,9 @@ class CbzReaderActivity final : public Activity {
   int imgWidth = 0;
   int imgHeight = 0;
 
+  // Heap-allocated line buffer to prevent stack overflow
+  uint16_t* pngLineBuffer = nullptr;
+
   // Static pointer for decoder callbacks
   static CbzReaderActivity* activeInstance;
 
@@ -41,4 +44,12 @@ class CbzReaderActivity final : public Activity {
 
   void handleJpegDraw(JPEGDRAW *pDraw);
   void handlePngDraw(PNGDRAW *pDraw);
+
+  // File system callbacks for streaming decoding from SD card
+  static void* cbzFileOpen(const char *szFilename, int32_t *pFileSize);
+  static void cbzFileClose(void *pHandle);
+  static int32_t cbzJpegRead(JPEGFILE *pFile, uint8_t *pBuf, int32_t iLen);
+  static int32_t cbzJpegSeek(JPEGFILE *pFile, int32_t iPosition);
+  static int32_t cbzPngRead(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
+  static int32_t cbzPngSeek(PNGFILE *pFile, int32_t iPosition);
 };

@@ -90,6 +90,45 @@ void CbzReaderActivity::onExit() {
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
+// File system callbacks for streaming decoding from SD card
+void* CbzReaderActivity::cbzFileOpen(const char *szFilename, int32_t *pFileSize) {
+  HalFile* file = new HalFile();
+  if (Storage.openFileForRead("CBZ", szFilename, *file)) {
+    *pFileSize = file->size();
+    return reinterpret_cast<void*>(file);
+  }
+  delete file;
+  return nullptr;
+}
+
+void CbzReaderActivity::cbzFileClose(void *pHandle) {
+  HalFile* file = reinterpret_cast<HalFile*>(pHandle);
+  if (file) {
+    file->close();
+    delete file;
+  }
+}
+
+int32_t CbzReaderActivity::cbzJpegRead(JPEGFILE *pFile, uint8_t *pBuf, int32_t iLen) {
+  HalFile* file = reinterpret_cast<HalFile*>(pFile->fHandle);
+  return file ? file->read(pBuf, iLen) : 0;
+}
+
+int32_t CbzReaderActivity::cbzJpegSeek(JPEGFILE *pFile, int32_t iPosition) {
+  HalFile* file = reinterpret_cast<HalFile*>(pFile->fHandle);
+  return (file && file->seek(iPosition)) ? file->position() : -1;
+}
+
+int32_t CbzReaderActivity::cbzPngRead(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen) {
+  HalFile* file = reinterpret_cast<HalFile*>(pFile->fHandle);
+  return file ? file->read(pBuf, iLen) : 0;
+}
+
+int32_t CbzReaderActivity::cbzPngSeek(PNGFILE *pFile, int32_t iPosition) {
+  HalFile* file = reinterpret_cast<HalFile*>(pFile->fHandle);
+  return (file && file->seek(iPosition)) ? file->position() : -1;
+}
+
 void CbzReaderActivity::preparePage(bool goingBackward) {
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
@@ -99,54 +138,37 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
     return;
   }
 
-  // Open the temp file to parse image headers (JPEG or PNG)
+  // Open the temp file to check signature
+  bool isPng = false;
   HalFile file;
-  if (!Storage.openFileForRead("CBZ", tempPath, file)) {
-    LOG_ERR("CBZ", "Failed to open extracted temp file for size query");
-    return;
-  }
-
-  size_t fileSize = file.size();
-  uint8_t* buffer = static_cast<uint8_t*>(malloc(fileSize));
-  if (!buffer) {
-    LOG_ERR("CBZ", "OOM when allocating buffer for image size query");
+  if (Storage.openFileForRead("CBZ", tempPath, file)) {
+    uint8_t header[4];
+    if (file.read(header, 4) == 4) {
+      isPng = (header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47);
+    }
     file.close();
-    return;
   }
 
-  size_t bytesRead = file.read(buffer, fileSize);
-  file.close();
-
-  if (bytesRead < fileSize) {
-    LOG_ERR("CBZ", "Short read on temp file: read %d of %d", (int)bytesRead, (int)fileSize);
-    free(buffer);
-    return;
-  }
-
-  // Identify type and get dimensions
+  // Parse dimensions directly from headers
   isLandscape = false;
   imgWidth = 0;
   imgHeight = 0;
 
-  if (bytesRead >= 8 && buffer[0] == 0x89 && buffer[1] == 0x50 && buffer[2] == 0x4E && buffer[3] == 0x47) {
-    // PNG file
+  if (isPng) {
     PNG png;
-    if (png.openRAM(buffer, fileSize, pngDrawCallback) == PNG_SUCCESS) {
+    if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
       imgWidth = png.getWidth();
       imgHeight = png.getHeight();
       png.close();
     }
   } else {
-    // Treat as JPEG
     JPEGDEC jpeg;
-    if (jpeg.openRAM(buffer, fileSize, jpegDrawCallback)) {
+    if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
       imgWidth = jpeg.getWidth();
       imgHeight = jpeg.getHeight();
       jpeg.close();
     }
   }
-
-  free(buffer);
 
   if (imgWidth > 0 && imgHeight > 0) {
     isLandscape = (imgWidth > imgHeight);
@@ -160,46 +182,61 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
 void CbzReaderActivity::renderPage() {
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
+  // Verify dimensions are known
+  if (imgWidth <= 0 || imgHeight <= 0) {
+    LOG_ERR("CBZ", "Dimensions unknown, attempting to prepare page again");
+    preparePage();
+  }
+
+  if (imgWidth <= 0 || imgHeight <= 0) {
+    LOG_ERR("CBZ", "Failed to resolve image dimensions");
+    return;
+  }
+
+  // Check signature
+  bool isPng = false;
   HalFile file;
-  if (!Storage.openFileForRead("CBZ", tempPath, file)) {
-    LOG_ERR("CBZ", "Failed to open temp file for rendering");
-    return;
-  }
-
-  size_t fileSize = file.size();
-  uint8_t* buffer = static_cast<uint8_t*>(malloc(fileSize));
-  if (!buffer) {
-    LOG_ERR("CBZ", "OOM allocating image render buffer");
+  if (Storage.openFileForRead("CBZ", tempPath, file)) {
+    uint8_t header[4];
+    if (file.read(header, 4) == 4) {
+      isPng = (header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47);
+    }
     file.close();
-    return;
   }
 
-  file.read(buffer, fileSize);
-  file.close();
+  // Allocate heap buffer for PNG lines to prevent stack overflow
+  pngLineBuffer = static_cast<uint16_t*>(malloc(imgWidth * sizeof(uint16_t)));
+  if (!pngLineBuffer) {
+    LOG_ERR("CBZ", "OOM when allocating heap line buffer for PNG (size %d)", imgWidth);
+    // Continue anyway; handlePngDraw will handle nullptr or skip
+  }
 
   // Clear screen before drawing
   renderer.clearScreen();
 
   activeInstance = this;
 
-  if (fileSize >= 8 && buffer[0] == 0x89 && buffer[1] == 0x50 && buffer[2] == 0x4E && buffer[3] == 0x47) {
-    // PNG file
+  if (isPng) {
     PNG png;
-    if (png.openRAM(buffer, fileSize, pngDrawCallback) == PNG_SUCCESS) {
+    if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
       png.decode(reinterpret_cast<void*>(&png), 0);
       png.close();
     }
   } else {
-    // JPEG file
     JPEGDEC jpeg;
-    if (jpeg.openRAM(buffer, fileSize, jpegDrawCallback)) {
+    if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
       jpeg.decode(0, 0, 0);
       jpeg.close();
     }
   }
 
   activeInstance = nullptr;
-  free(buffer);
+
+  // Free heap line buffer
+  if (pngLineBuffer) {
+    free(pngLineBuffer);
+    pngLineBuffer = nullptr;
+  }
 
   // Draw UI hints/statusBar
   int total = archive.getPageCount();
@@ -331,6 +368,8 @@ void CbzReaderActivity::handleJpegDraw(JPEGDRAW *pDraw) {
 }
 
 void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
+  if (!pngLineBuffer) return;
+
   int screenW = renderer.getScreenWidth();
   int screenH = renderer.getScreenHeight();
 
@@ -341,12 +380,11 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
   int destY = srcY * screenH / imgHeight;
   if (destY < 0 || destY >= screenH) return;
 
-  // We decode the row to an RGB565 line buffer
-  uint16_t lineBuffer[2048];
-  int lineW = pDraw->iWidth < 2048 ? pDraw->iWidth : 2048;
+  // We decode the row to the heap line buffer
+  int lineW = pDraw->iWidth < imgWidth ? pDraw->iWidth : imgWidth;
   
   PNG* png = reinterpret_cast<PNG*>(pDraw->pUser);
-  png->getLineAsRGB565(pDraw, lineBuffer, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+  png->getLineAsRGB565(pDraw, pngLineBuffer, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
 
   int effectiveSrcW = isLandscape ? (imgWidth / 2) : imgWidth;
   int srcOffset = (isLandscape && showRightHalf) ? (imgWidth / 2) : 0;
@@ -362,7 +400,7 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
     int destX = effectiveSrcX * screenW / effectiveSrcW;
     if (destX < 0 || destX >= screenW) continue;
 
-    uint16_t pixel = lineBuffer[srcX];
+    uint16_t pixel = pngLineBuffer[srcX];
 
     // Convert RGB565 to Grayscale
     uint8_t r = ((pixel >> 11) & 0x1F) * 255 / 31;

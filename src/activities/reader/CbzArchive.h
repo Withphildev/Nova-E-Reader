@@ -1,11 +1,14 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
+
+class ZipFile;
 
 class CbzArchive {
  public:
-  CbzArchive() = default;
-  ~CbzArchive() = default;
+  CbzArchive();
+  ~CbzArchive();
 
   bool open(const std::string& cbzPath);
   void close();
@@ -21,4 +24,5 @@ class CbzArchive {
  private:
   std::string filePath;
   std::vector<std::string> pages;
+  std::unique_ptr<ZipFile> zip;
 };

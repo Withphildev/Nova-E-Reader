@@ -4,18 +4,22 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+CbzArchive::CbzArchive() = default;
+CbzArchive::~CbzArchive() = default;
+
 bool CbzArchive::open(const std::string& cbzPath) {
   filePath = cbzPath;
   pages.clear();
 
-  ZipFile zip(filePath);
-  if (!zip.open()) {
+  zip = std::make_unique<ZipFile>(filePath);
+  if (!zip->open()) {
     LOG_ERR("CBZ", "Failed to open ZIP archive: %s", filePath.c_str());
+    zip.reset();
     return false;
   }
 
   // Enumerate all files and find images
-  zip.enumerateFilePaths([this](std::string_view name) {
+  zip->enumerateFilePaths([this](std::string_view name) {
     std::string pathStr(name);
     // Ignore hidden files and MAC metadata directories
     if (pathStr.empty() || pathStr[0] == '.' || pathStr.find("__MACOSX") != std::string::npos) {
@@ -29,7 +33,7 @@ bool CbzArchive::open(const std::string& cbzPath) {
     }
   });
 
-  zip.close();
+  zip->loadAllFileStatSlims();
 
   // Sort files alphabetically
   FsHelpers::sortFileList(pages);
@@ -40,10 +44,14 @@ bool CbzArchive::open(const std::string& cbzPath) {
 
 void CbzArchive::close() {
   pages.clear();
+  if (zip) {
+    zip->close();
+    zip.reset();
+  }
 }
 
 bool CbzArchive::extractPageToTempFile(size_t index, const std::string& tempPath) {
-  if (index >= pages.size()) return false;
+  if (index >= pages.size() || !zip) return false;
   
   const std::string& internalPath = pages[index];
   
@@ -59,9 +67,8 @@ bool CbzArchive::extractPageToTempFile(size_t index, const std::string& tempPath
     return false;
   }
 
-  ZipFile zip(filePath);
   // Extracted block-by-block using 4KB chunk size to keep heap footprint negligible
-  bool success = zip.readFileToStream(internalPath.c_str(), outFile, 4096);
+  bool success = zip->readFileToStream(internalPath.c_str(), outFile, 4096);
   outFile.close();
 
   if (!success) {

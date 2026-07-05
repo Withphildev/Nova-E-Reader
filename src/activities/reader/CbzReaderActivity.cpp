@@ -12,16 +12,16 @@
 
 CbzReaderActivity* CbzReaderActivity::activeInstance = nullptr;
 
-// Bayer 8x8 threshold matrix for ordered dithering
-static const uint8_t B8[8][8] = {
-    { 0, 48, 12, 60,  3, 51, 15, 63},
-    {32, 16, 44, 28, 35, 19, 47, 31},
-    { 8, 56,  4, 52, 11, 59,  7, 55},
-    {40, 24, 36, 20, 43, 27, 39, 23},
-    { 2, 50, 14, 62,  1, 49, 13, 61},
-    {34, 18, 46, 30, 33, 17, 45, 29},
-    {10, 58,  6, 54,  9, 57,  5, 53},
-    {42, 26, 38, 22, 41, 25, 37, 21}
+// Pre-scaled Bayer 8x8 threshold matrix for ordered dithering (values scaled from 0..63 to 0..255)
+static const uint8_t B8_255[8][8] = {
+    {  0, 191,  47, 239,  11, 203,  59, 251},
+    {127,  63, 175, 111, 139,  75, 187, 123},
+    { 31, 223,  15, 207,  43, 235,  27, 219},
+    {159,  95, 143,  79, 171, 107, 155,  91},
+    {  7, 199,  55, 247,   3, 195,  51, 243},
+    {135,  71, 179, 119, 131,  67, 171, 115},
+    { 39, 231,  23, 215,  35, 227,  19, 211},
+    {167, 103, 151,  87, 163,  99, 147,  83}
 };
 
 CbzReaderActivity::CbzReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
@@ -329,16 +329,21 @@ void CbzReaderActivity::handleJpegDraw(JPEGDRAW *pDraw) {
   int screenW = renderer.getScreenWidth();
   int screenH = renderer.getScreenHeight();
 
-  // If landscape, we are splitting it into two logical pages
   int effectiveSrcW = isLandscape ? (imgWidth / 2) : imgWidth;
   int srcOffset = (isLandscape && showRightHalf) ? (imgWidth / 2) : 0;
+
+  // Fixed point 16.16 multipliers to avoid integer division inside loops
+  uint32_t scaleX = (screenW << 16) / effectiveSrcW;
+  uint32_t scaleY = (screenH << 16) / imgHeight;
 
   for (int y = 0; y < pDraw->iHeight; y++) {
     int srcY = pDraw->y + y;
     if (srcY >= imgHeight) continue;
 
-    int destY = srcY * screenH / imgHeight;
+    int destY = (srcY * scaleY) >> 16;
     if (destY < 0 || destY >= screenH) continue;
+
+    int destY_mod8 = destY & 7;
 
     for (int x = 0; x < pDraw->iWidth; x++) {
       int srcX = pDraw->x + x;
@@ -351,20 +356,22 @@ void CbzReaderActivity::handleJpegDraw(JPEGDRAW *pDraw) {
       }
 
       int effectiveSrcX = srcX - srcOffset;
-      int destX = effectiveSrcX * screenW / effectiveSrcW;
+      int destX = (effectiveSrcX * scaleX) >> 16;
       if (destX < 0 || destX >= screenW) continue;
 
       uint16_t pixel = pDraw->pPixels[y * pDraw->iWidth + x];
 
-      // Convert RGB565 to Grayscale
-      uint8_t r = ((pixel >> 11) & 0x1F) * 255 / 31;
-      uint8_t g = ((pixel >> 5) & 0x3F) * 255 / 63;
-      uint8_t b = (pixel & 0x1F) * 255 / 31;
-      uint8_t gray = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
+      // Convert RGB565 to Grayscale using bitwise operations
+      uint8_t r5 = (pixel >> 11) & 0x1F;
+      uint8_t g6 = (pixel >> 5) & 0x3F;
+      uint8_t b5 = pixel & 0x1F;
+      uint8_t r = (r5 << 3) | (r5 >> 2);
+      uint8_t g = (g6 << 2) | (g6 >> 4);
+      uint8_t b = (b5 << 3) | (b5 >> 2);
+      uint8_t gray = (r * 77 + g * 150 + b * 29) >> 8;
 
-      // Bayer ordered dither
-      uint8_t threshold = B8[destY % 8][destX % 8] / 64.0f * 255.0f;
-      bool pixelState = (gray < threshold);
+      // Bayer ordered dither using pre-scaled matrix B8_255
+      bool pixelState = (gray < B8_255[destY_mod8][destX & 7]);
 
       renderer.drawPixel(destX, destY, pixelState);
     }
@@ -381,7 +388,8 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
   int srcY = pDraw->y;
   if (srcY >= imgHeight) return;
 
-  int destY = srcY * screenH / imgHeight;
+  uint32_t scaleY = (screenH << 16) / imgHeight;
+  int destY = (srcY * scaleY) >> 16;
   if (destY < 0 || destY >= screenH) return;
 
   // We decode the row to the heap line buffer
@@ -393,6 +401,9 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
   int effectiveSrcW = isLandscape ? (imgWidth / 2) : imgWidth;
   int srcOffset = (isLandscape && showRightHalf) ? (imgWidth / 2) : 0;
 
+  uint32_t scaleX = (screenW << 16) / effectiveSrcW;
+  int destY_mod8 = destY & 7;
+
   for (int srcX = 0; srcX < lineW; srcX++) {
     // Crop checks for split screen
     if (isLandscape) {
@@ -401,20 +412,22 @@ void CbzReaderActivity::handlePngDraw(PNGDRAW *pDraw) {
     }
 
     int effectiveSrcX = srcX - srcOffset;
-    int destX = effectiveSrcX * screenW / effectiveSrcW;
+    int destX = (effectiveSrcX * scaleX) >> 16;
     if (destX < 0 || destX >= screenW) continue;
 
     uint16_t pixel = pngLineBuffer[srcX];
 
-    // Convert RGB565 to Grayscale
-    uint8_t r = ((pixel >> 11) & 0x1F) * 255 / 31;
-    uint8_t g = ((pixel >> 5) & 0x3F) * 255 / 63;
-    uint8_t b = (pixel & 0x1F) * 255 / 31;
-    uint8_t gray = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
+    // Convert RGB565 to Grayscale using bitwise operations
+    uint8_t r5 = (pixel >> 11) & 0x1F;
+    uint8_t g6 = (pixel >> 5) & 0x3F;
+    uint8_t b5 = pixel & 0x1F;
+    uint8_t r = (r5 << 3) | (r5 >> 2);
+    uint8_t g = (g6 << 2) | (g6 >> 4);
+    uint8_t b = (b5 << 3) | (b5 >> 2);
+    uint8_t gray = (r * 77 + g * 150 + b * 29) >> 8;
 
-    // Bayer ordered dither
-    uint8_t threshold = B8[destY % 8][destX % 8] / 64.0f * 255.0f;
-    bool pixelState = (gray < threshold);
+    // Bayer ordered dither using pre-scaled matrix B8_255
+    bool pixelState = (gray < B8_255[destY_mod8][destX & 7]);
 
     renderer.drawPixel(destX, destY, pixelState);
   }

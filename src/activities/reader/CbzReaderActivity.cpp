@@ -8,6 +8,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include <ZipFile.h>
+#include <memory>
 
 CbzReaderActivity* CbzReaderActivity::activeInstance = nullptr;
 
@@ -163,26 +164,26 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
     file.close();
   }
 
-  // Parse dimensions directly from headers
+  // Parse dimensions directly from headers (allocating decoders on heap to prevent stack overflow)
   isLandscape = false;
   imgWidth = 0;
   imgHeight = 0;
 
   if (isPng) {
-    PNG png;
+    auto png = std::make_unique<PNG>();
     LOG_INF("CBZ", "png.open starting...");
-  if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
-      imgWidth = png.getWidth();
-      imgHeight = png.getHeight();
-      png.close();
+    if (png->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
+      imgWidth = png->getWidth();
+      imgHeight = png->getHeight();
+      png->close();
     }
   } else {
-    JPEGDEC jpeg;
+    auto jpeg = std::make_unique<JPEGDEC>();
     LOG_INF("CBZ", "jpeg.open starting...");
-  if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
-      imgWidth = jpeg.getWidth();
-      imgHeight = jpeg.getHeight();
-      jpeg.close();
+    if (jpeg->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
+      imgWidth = jpeg->getWidth();
+      imgHeight = jpeg->getHeight();
+      jpeg->close();
     }
   }
 
@@ -225,7 +226,6 @@ void CbzReaderActivity::renderPage() {
   pngLineBuffer = static_cast<uint16_t*>(malloc(imgWidth * sizeof(uint16_t)));
   if (!pngLineBuffer) {
     LOG_ERR("CBZ", "OOM when allocating heap line buffer for PNG (size %d)", imgWidth);
-    // Continue anyway; handlePngDraw will handle nullptr or skip
   }
 
   // Clear screen before drawing
@@ -234,18 +234,18 @@ void CbzReaderActivity::renderPage() {
   activeInstance = this;
 
   if (isPng) {
-    PNG png;
-    LOG_INF("CBZ", "png.open starting...");
-  if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
-      png.decode(reinterpret_cast<void*>(&png), 0);
-      png.close();
+    auto png = std::make_unique<PNG>();
+    LOG_INF("CBZ", "png.open for decode starting...");
+    if (png->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
+      png->decode(reinterpret_cast<void*>(png.get()), 0);
+      png->close();
     }
   } else {
-    JPEGDEC jpeg;
-    LOG_INF("CBZ", "jpeg.open starting...");
-  if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
-      jpeg.decode(0, 0, 0);
-      jpeg.close();
+    auto jpeg = std::make_unique<JPEGDEC>();
+    LOG_INF("CBZ", "jpeg.open for decode starting...");
+    if (jpeg->open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
+      jpeg->decode(0, 0, 0);
+      jpeg->close();
     }
   }
 

@@ -43,7 +43,6 @@ void CbzArchive::close() {
 }
 
 bool CbzArchive::extractPageToTempFile(size_t index, const std::string& tempPath) {
-  LOG_INF("CBZ", "extractPageToTempFile starting: index=%d, path=%s", (int)index, tempPath.c_str());
   if (index >= pages.size()) return false;
   
   const std::string& internalPath = pages[index];
@@ -62,9 +61,7 @@ bool CbzArchive::extractPageToTempFile(size_t index, const std::string& tempPath
 
   ZipFile zip(filePath);
   // Extracted block-by-block using 4KB chunk size to keep heap footprint negligible
-  LOG_INF("CBZ", "zip.readFileToStream starting for %s", internalPath.c_str());
   bool success = zip.readFileToStream(internalPath.c_str(), outFile, 4096);
-  LOG_INF("CBZ", "zip.readFileToStream complete, success=%d", (int)success);
   outFile.close();
 
   if (!success) {

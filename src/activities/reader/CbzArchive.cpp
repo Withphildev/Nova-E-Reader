@@ -67,8 +67,8 @@ bool CbzArchive::extractPageToTempFile(size_t index, const std::string& tempPath
     return false;
   }
 
-  // Extracted block-by-block using 16KB chunk size for much faster decompression
-  bool success = zip->readFileToStream(internalPath.c_str(), outFile, 16384);
+  // Extracted block-by-block using 32KB chunk size (aligned with FAT32 cluster size)
+  bool success = zip->readFileToStream(internalPath.c_str(), outFile, 32768);
   outFile.close();
 
   if (!success) {

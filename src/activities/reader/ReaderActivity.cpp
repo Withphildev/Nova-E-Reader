@@ -14,6 +14,7 @@
 #include "XtcReaderActivity.h"
 #include "activities/util/BmpViewerActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
+#include "CbzReaderActivity.h"
 
 bool ReaderActivity::isXtcFile(const std::string& path) { return FsHelpers::hasXtcExtension(path); }
 
@@ -23,6 +24,8 @@ bool ReaderActivity::isTxtFile(const std::string& path) {
 }
 
 bool ReaderActivity::isBmpFile(const std::string& path) { return FsHelpers::hasBmpExtension(path); }
+
+bool ReaderActivity::isCbzFile(const std::string& path) { return FsHelpers::hasCbzExtension(path); }
 
 std::unique_ptr<Epub> ReaderActivity::loadEpub(const std::string& path) {
   if (!Storage.exists(path.c_str())) {
@@ -109,6 +112,11 @@ void ReaderActivity::onGoToTxtReader(std::unique_ptr<Txt> txt) {
   activityManager.replaceActivity(std::make_unique<TxtReaderActivity>(renderer, mappedInput, std::move(txt)));
 }
 
+void ReaderActivity::onGoToCbzReader(const std::string& path) {
+  currentBookPath = path;
+  activityManager.replaceActivity(std::make_unique<CbzReaderActivity>(renderer, mappedInput, path));
+}
+
 void ReaderActivity::onEnter() {
   Activity::onEnter();
 
@@ -122,6 +130,8 @@ void ReaderActivity::onEnter() {
   currentBookPath = initialBookPath;
   if (isBmpFile(initialBookPath)) {
     onGoToBmpViewer(initialBookPath);
+  } else if (isCbzFile(initialBookPath)) {
+    onGoToCbzReader(initialBookPath);
   } else if (isXtcFile(initialBookPath)) {
     auto xtc = loadXtc(initialBookPath);
     if (!xtc) {

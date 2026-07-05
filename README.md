@@ -12,19 +12,27 @@ CrossPoint is open-source e-reader firmware - community-built, fully hackable, f
 
 This fork includes several quality-of-life additions, custom graphics, and layout enhancements tailored for the Xteink e-reader:
 
-### 1. Persistent Favorites System
+### 1. High-Performance CBZ Comic Book Reader
+* **Native Zip/CBZ Extraction**: Extract and decode comic pages on the fly with a low-RAM footprint.
+* **Fast Page-Caching**: Dithered 1-bit frames are cached to the SD card. Subsequent views load instantly in under 0.1 seconds.
+* **Optimal I/O Buffering**: Uses 32KB block buffering aligned to physical FAT32 cluster boundaries to maximize SD transfer speeds.
+* **JPEG DCT Scaling**: Decodes large comic page images at reduced DCT scales (1/2, 1/4, 1/8) to cut CPU decompression time.
+* **Grayscale Contrast Optimization**: Employs a custom 1.5 gamma midtone-darkening curve to make text and illustrations pop on the e-paper screen.
+* **Auto-Landscape Split**: Automatically detects landscape spreads and splits them into logical Left/Right pages.
+
+### 2. Persistent Favorites System
 * **Home Screen Integration**: Access your most-read files instantly via the new **Favorites** tab (adorned with a bookmark icon) on the main Home menu.
 * **Instant Power Button Toggle**: Short-press the physical **Power button** on any highlighted book file to star/unstar it immediately from any list view.
 * **Visual Bookmark Icons**: Favorited books display with a high-contrast **Bookmark (flag) icon** at the left of the item row instead of the standard file icon.
 * **Persisted Storage**: Favorited items are saved in `/.crosspoint/favorites.json` and are restored automatically on boot.
 
-### 2. Rich Markdown (`.md`) Parser
+### 3. Rich Markdown (`.md`) Parser
 * Native support for standard Markdown files.
 * Implements formatting for headers (lines starting with `#` are rendered bold and enlarged).
 * Properly indents bullet-point lists (lines starting with `-`, `*`, or `+`).
 * Draws clean horizontal dividing lines for markdown separators (`---`).
 
-### 3. Custom Boot & Sleep Artwork
+### 4. Custom Boot & Sleep Artwork
 * **Boot Screen**: Displays a custom full-screen morning wakeup scene illustration (`800x480` landscape pixels) on startup.
 * **Sleep Screen Progression**: Includes 5 custom transparent progression panel illustrations for the sleep screen, depicting your companion waking up and going through their day.
 
@@ -34,7 +42,7 @@ This fork includes several quality-of-life additions, custom graphics, and layou
 
 - **Reader engine**: EPUB 2/3 rendering with embedded-style option, image handling, hyphenation, kerning, chapter navigation, footnotes, bookmarks, go-to-percent, auto page turn, orientation control, focus reading, KOReader progress sync and more. 
 
-- **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, and `.bmp`.
+- **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, `.md` (Markdown), `.cbz` (CBZ Comic Book), and `.bmp`.
 
 - **Screenshots.**
 

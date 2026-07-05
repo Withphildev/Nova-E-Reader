@@ -206,6 +206,15 @@ class BaseTheme {
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;
+  // Total pixel height of the home button menu grid for buttonCount items.
+  // Lets callers (HomeActivity) place content directly below the menu.
+  virtual int getButtonMenuHeight(const GfxRenderer& renderer, int buttonCount) const;
+  // Rect of grid cell cellIndex (row-major). Also valid for the first empty
+  // cell (cellIndex == buttonCount) so callers can place content in the gap
+  // left by an odd item count (HomeActivity puts the stats box there).
+  virtual Rect getButtonMenuCellRect(const GfxRenderer& renderer, Rect menuRect, int cellIndex) const;
+  // Number of columns in the home button menu grid (shared by all themes).
+  static constexpr int homeMenuColumns = 2;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,

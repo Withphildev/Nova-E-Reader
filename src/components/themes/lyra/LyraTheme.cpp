@@ -515,11 +515,11 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  // 2-column grid, row-major order (matches Up/Down navigation order).
+  // With an odd item count the last cell stays empty; HomeActivity places the
+  // stats box there via getButtonMenuCellRect.
   for (int i = 0; i < buttonCount; ++i) {
-    int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
-    Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
-                         rect.y + i * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing), tileWidth,
-                         LyraMetrics::values.menuRowHeight};
+    const Rect tileRect = getButtonMenuCellRect(renderer, rect, i);
 
     const bool selected = selectedIndex == i;
 
@@ -527,8 +527,6 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
       renderer.fillRoundedRect(tileRect.x, tileRect.y, tileRect.width, tileRect.height, cornerRadius, Color::LightGray);
     }
 
-    std::string labelStr = buttonLabel(i);
-    const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
     const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
@@ -542,6 +540,27 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
       }
     }
 
-    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true);
+    // Truncate labels that exceed the (narrower) tile width, e.g. long translations
+    const int maxLabelWidth = tileRect.x + tileRect.width - textX - hPaddingInSelection;
+    const std::string labelStr = renderer.truncatedText(UI_12_FONT_ID, buttonLabel(i).c_str(), maxLabelWidth);
+    renderer.drawText(UI_12_FONT_ID, textX, textY, labelStr.c_str(), true);
   }
+}
+
+int LyraTheme::getButtonMenuHeight(const GfxRenderer& renderer, int buttonCount) const {
+  (void)renderer;
+  const int rows = (buttonCount + mainMenuColumns - 1) / mainMenuColumns;
+  return rows * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing);
+}
+
+Rect LyraTheme::getButtonMenuCellRect(const GfxRenderer& renderer, Rect menuRect, int cellIndex) const {
+  (void)renderer;
+  const int colGap = LyraMetrics::values.menuSpacing;
+  const int fullWidth = menuRect.width - LyraMetrics::values.contentSidePadding * 2;
+  const int tileWidth = (fullWidth - colGap * (mainMenuColumns - 1)) / mainMenuColumns;
+  const int row = cellIndex / mainMenuColumns;
+  const int col = cellIndex % mainMenuColumns;
+  return Rect{menuRect.x + LyraMetrics::values.contentSidePadding + col * (tileWidth + colGap),
+              menuRect.y + row * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing), tileWidth,
+              LyraMetrics::values.menuRowHeight};
 }

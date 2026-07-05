@@ -195,39 +195,43 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
                                       const std::function<std::string(int index)>& buttonLabel,
                                       const std::function<UIIcon(int index)>& rowIcon) const {
   (void)rowIcon;
-  const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
-  const int rowX = rect.x + sidePadding;
-  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;  // 10px top + 10px bottom
-  const int rowGap = kSelectableRowGap;
-  const int rowStep = rowHeight + rowGap;
-  const int pageItems = std::max(1, rect.height / rowStep);
-  const int safeSelectedIndex = std::max(0, selectedIndex);
-  const int pageStartIndex = (safeSelectedIndex / pageItems) * pageItems;
-  const int menuTop = rect.y;
+  // 2-column grid, row-major order (matches Up/Down navigation order).
+  // With an odd item count the last cell stays empty; HomeActivity places the
+  // stats box there via getButtonMenuCellRect. All rows fit on one page, so
+  // the previous selection-based paging (and scrollbar) is no longer needed.
   const int textLineHeight = renderer.getLineHeight(kTitleFontId);
-  const int menuMaxWidth = std::max(0, rect.width - sidePadding * 2);
 
-  for (int i = pageStartIndex; i < buttonCount && i < pageStartIndex + pageItems; ++i) {
-    const std::string label = buttonLabel(i);
-    const int rowY = menuTop + (i - pageStartIndex) * rowStep;
+  for (int i = 0; i < buttonCount; ++i) {
+    const Rect tile = getButtonMenuCellRect(renderer, rect, i);
     constexpr int kRowPaddingX = 40;  // 20px L/R
-    const int maxLabelWidth = std::max(0, menuMaxWidth - kRowPaddingX);
+    const int maxLabelWidth = std::max(0, tile.width - kRowPaddingX);
     const std::string truncatedLabel =
-        renderer.truncatedText(kTitleFontId, label.c_str(), maxLabelWidth, EpdFontFamily::BOLD);
-    const int rowWidth = std::min(
-        menuMaxWidth, renderer.getTextWidth(kTitleFontId, truncatedLabel.c_str(), EpdFontFamily::BOLD) + kRowPaddingX);
+        renderer.truncatedText(kTitleFontId, buttonLabel(i).c_str(), maxLabelWidth, EpdFontFamily::BOLD);
     const bool isSelected = selectedIndex == i;
-    renderer.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, kMenuRadius, isSelected ? Color::Black : Color::White);
-    const int textY = rowY + (rowHeight - textLineHeight) / 2;
-    const int textX = rowX + kInteractiveInsetX;
-    if (selectedIndex == i) {
-      renderer.drawText(kTitleFontId, textX, textY, truncatedLabel.c_str(), false, EpdFontFamily::BOLD);
-    } else {
-      renderer.drawText(kTitleFontId, textX, textY, truncatedLabel.c_str(), true, EpdFontFamily::BOLD);
-    }
+    renderer.fillRoundedRect(tile.x, tile.y, tile.width, tile.height, kMenuRadius,
+                             isSelected ? Color::Black : Color::White);
+    const int textY = tile.y + (tile.height - textLineHeight) / 2;
+    const int textX = tile.x + kInteractiveInsetX;
+    renderer.drawText(kTitleFontId, textX, textY, truncatedLabel.c_str(), !isSelected, EpdFontFamily::BOLD);
   }
+}
 
-  drawScrollBar(renderer, rect, buttonCount, pageStartIndex, pageItems);
+int RoundedRaffTheme::getButtonMenuHeight(const GfxRenderer& renderer, int buttonCount) const {
+  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;
+  const int rows = (buttonCount + homeMenuColumns - 1) / homeMenuColumns;
+  return rows * (rowHeight + kSelectableRowGap);
+}
+
+Rect RoundedRaffTheme::getButtonMenuCellRect(const GfxRenderer& renderer, Rect menuRect, int cellIndex) const {
+  const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
+  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;  // 10px top + 10px bottom
+  const int colGap = kSelectableRowGap;
+  const int menuMaxWidth = std::max(0, menuRect.width - sidePadding * 2);
+  const int tileWidth = std::max(0, (menuMaxWidth - colGap * (homeMenuColumns - 1)) / homeMenuColumns);
+  const int row = cellIndex / homeMenuColumns;
+  const int col = cellIndex % homeMenuColumns;
+  return Rect{menuRect.x + sidePadding + col * (tileWidth + colGap),
+              menuRect.y + row * (rowHeight + kSelectableRowGap), tileWidth, rowHeight};
 }
 
 void RoundedRaffTheme::drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode,

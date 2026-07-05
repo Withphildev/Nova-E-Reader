@@ -9,6 +9,7 @@
 #include <Utf8.h>
 #include <Xtc.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -282,47 +283,72 @@ void HomeActivity::render(RenderLock&& lock) {
     menuIcons.insert(menuIcons.begin(), Book);
   }
 
-  const int menuHeight = pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                                      metrics.homeMenuTopOffset + metrics.buttonHintsHeight) - 106;
+  // Menu is a 2-column grid; ask the theme for its exact height so the
+  // stats/companion block can sit directly below it in the reclaimed space.
+  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  const int menuHeight = GUI.getButtonMenuHeight(renderer, static_cast<int>(menuItems.size()));
 
   GUI.drawButtonMenu(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           menuHeight},
-      static_cast<int>(menuItems.size()),
+      renderer, Rect{0, menuTop, pageWidth, menuHeight}, static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
-  // Draw Stats Box and Companion at the bottom
-  const int statsY = pageHeight - metrics.buttonHintsHeight - 106;
+  const int itemCount = static_cast<int>(menuItems.size());
   const auto& stats = ReadingStatsManager::getInstance();
 
-  if (SETTINGS.companionType != CrossPointSettings::COMPANION_NONE) {
-    const int companionSize = 128;
-    const int companionX = pageWidth - companionSize - metrics.contentSidePadding;
-    const int companionY = statsY + 5;
+  if (itemCount % 2 != 0) {
+    // Odd item count: the grid's last cell is empty. Put the stats box there
+    // (next to Settings) and center the companion in the band below the menu.
+    const Rect statsCell = GUI.getButtonMenuCellRect(renderer, Rect{0, menuTop, pageWidth, menuHeight}, itemCount);
+    constexpr int statsBoxHeight = 50;
+    GUI.drawStatsBox(
+        renderer,
+        Rect{statsCell.x, statsCell.y + (statsCell.height - statsBoxHeight) / 2, statsCell.width, statsBoxHeight},
+        stats.getCurrentStreak(), stats.getTotalPagesRead());
 
-    // Draw Stats Box
-    const int statsW = pageWidth - companionSize - metrics.contentSidePadding * 3;
-    GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
-                     stats.getCurrentStreak(), stats.getTotalPagesRead());
-
-    // Draw Companion
-    GUI.drawCompanion(renderer, companionX, companionY, companionSize);
-
-    // Draw Stage Quote above stats boxes
-    auto stage = JourneyManager::getInstance().getJourneyStage();
-    StrId quoteId = JourneyManager::getInstance().getStageTextId(stage);
-    const char* quoteStr = I18n::getInstance().get(quoteId);
-    int quoteW = renderer.getTextWidth(SMALL_FONT_ID, quoteStr);
-    int quoteX = metrics.contentSidePadding + (statsW - quoteW) / 2;
-    renderer.drawText(SMALL_FONT_ID, quoteX, statsY + 8, quoteStr);
+    if (SETTINGS.companionType != CrossPointSettings::COMPANION_NONE) {
+      // Companion fills the freed band, horizontally centered.
+      const int bandTop = menuTop + menuHeight;
+      const int bandBottom = pageHeight - metrics.buttonHintsHeight;
+      constexpr int companionW = 440;
+      constexpr int companionH = 230;
+      const int companionX = (pageWidth - companionW) / 2;
+      const int companionY = bandTop + std::max(0, (bandBottom - bandTop - companionH) / 2);
+      GUI.drawCompanion(renderer, companionX, companionY, companionW);
+    }
   } else {
-    // Draw Stats Box centered (full width)
-    const int statsW = pageWidth - metrics.contentSidePadding * 2;
-    GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
-                     stats.getCurrentStreak(), stats.getTotalPagesRead());
+    // Even item count (e.g. OPDS enabled): no free grid cell, keep the classic
+    // bottom layout. Never lower than the previous bottom-anchored position.
+    const int bottomAnchoredStatsY = pageHeight - metrics.buttonHintsHeight - 106;
+    const int statsY = std::min(bottomAnchoredStatsY, menuTop + menuHeight + metrics.verticalSpacing);
+
+    if (SETTINGS.companionType != CrossPointSettings::COMPANION_NONE) {
+      const int companionSize = 128;
+      const int companionX = pageWidth - companionSize - metrics.contentSidePadding;
+      const int companionY = statsY + 5;
+
+      // Draw Stats Box
+      const int statsW = pageWidth - companionSize - metrics.contentSidePadding * 3;
+      GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
+                       stats.getCurrentStreak(), stats.getTotalPagesRead());
+
+      // Draw Companion
+      GUI.drawCompanion(renderer, companionX, companionY, companionSize);
+
+      // Draw Stage Quote above stats boxes
+      auto stage = JourneyManager::getInstance().getJourneyStage();
+      StrId quoteId = JourneyManager::getInstance().getStageTextId(stage);
+      const char* quoteStr = I18n::getInstance().get(quoteId);
+      int quoteW = renderer.getTextWidth(SMALL_FONT_ID, quoteStr);
+      int quoteX = metrics.contentSidePadding + (statsW - quoteW) / 2;
+      renderer.drawText(SMALL_FONT_ID, quoteX, statsY + 8, quoteStr);
+    } else {
+      // Draw Stats Box centered (full width)
+      const int statsW = pageWidth - metrics.contentSidePadding * 2;
+      GUI.drawStatsBox(renderer, Rect{metrics.contentSidePadding, statsY + 28, statsW, 50},
+                       stats.getCurrentStreak(), stats.getTotalPagesRead());
+    }
   }
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));

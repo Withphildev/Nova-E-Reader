@@ -668,30 +668,54 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
+  (void)rowIcon;  // Classic theme draws text-only tiles
+  // 2-column grid, row-major order (matches Up/Down navigation order).
+  // With an odd item count the last cell stays empty; HomeActivity places the
+  // stats box there via getButtonMenuCellRect.
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
-
+    const Rect tile = getButtonMenuCellRect(renderer, rect, i);
     const bool selected = selectedIndex == i;
 
     if (selected) {
-      renderer.fillRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+      renderer.fillRect(tile.x, tile.y, tile.width, tile.height);
     } else {
-      renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+      renderer.drawRect(tile.x, tile.y, tile.width, tile.height);
     }
 
-    std::string labelStr = buttonLabel(i);
+    // Truncate labels that exceed the (narrower) tile width, e.g. long translations
+    constexpr int labelPadding = 8;
+    const std::string labelStr =
+        renderer.truncatedText(UI_10_FONT_ID, buttonLabel(i).c_str(), tile.width - labelPadding);
     const char* label = labelStr.c_str();
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-    const int textX = rect.x + (rect.width - textWidth) / 2;
+    const int textX = tile.x + (tile.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
+        tile.y + (tile.height - lineHeight) / 2;  // vertically centered assuming y is top of text
     // Invert text when the tile is selected, to contrast with the filled background
-    renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
+    renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected);
   }
+}
+
+Rect BaseTheme::getButtonMenuCellRect(const GfxRenderer& renderer, Rect menuRect, int cellIndex) const {
+  (void)renderer;
+  const int colGap = BaseMetrics::values.menuSpacing;
+  const int fullWidth = menuRect.width - BaseMetrics::values.contentSidePadding * 2;
+  const int tileWidth = (fullWidth - colGap * (homeMenuColumns - 1)) / homeMenuColumns;
+  const int row = cellIndex / homeMenuColumns;
+  const int col = cellIndex % homeMenuColumns;
+  return Rect{menuRect.x + BaseMetrics::values.contentSidePadding + col * (tileWidth + colGap),
+              BaseMetrics::values.verticalSpacing + menuRect.y +
+                  row * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing),
+              tileWidth, BaseMetrics::values.menuRowHeight};
+}
+
+int BaseTheme::getButtonMenuHeight(const GfxRenderer& renderer, int buttonCount) const {
+  (void)renderer;
+  const int rows = (buttonCount + homeMenuColumns - 1) / homeMenuColumns;
+  // Matches drawButtonMenu: leading verticalSpacing, then rows of tile + spacing
+  return BaseMetrics::values.verticalSpacing +
+         rows * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
 }
 
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) const {
@@ -1016,6 +1040,45 @@ void BaseTheme::drawCompanion(const GfxRenderer& renderer, int x, int y, int siz
   }
 
   const uint8_t* bitmap = nullptr;
+
+  if (size == 440) {
+    if (companionType == CrossPointSettings::COMPANION_NOVA) {
+      int stage = JourneyManager::getInstance().getJourneyStage();
+      switch (stage) {
+        case JourneyManager::STAGE_READING_TOGETHER: bitmap = CompanionNovaStage2_440; break;
+        case JourneyManager::STAGE_GROWING_TOGETHER: bitmap = CompanionNovaStage3_440; break;
+        case JourneyManager::STAGE_HABIT_BUILDER: bitmap = CompanionNovaStage4_440; break;
+        case JourneyManager::STAGE_EXPLORER: bitmap = CompanionNovaStage5_440; break;
+        case JourneyManager::STAGE_PHOTOGRAPHER: bitmap = CompanionNovaStage6_440; break;
+        case JourneyManager::STAGE_REFERENCE_KEEPER: bitmap = CompanionNovaStage7_440; break;
+        case JourneyManager::STAGE_NEW_FRIEND:
+        default: bitmap = CompanionNovaStage1_440; break;
+      }
+      if (bitmap != nullptr) {
+        renderer.drawIcon(bitmap, x, y, 440, 230);
+        return;
+      }
+    } else if (companionType == CrossPointSettings::COMPANION_FOX) {
+      bitmap = CompanionFox96;
+      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (230 - 96) / 2, 96, 96);
+      return;
+    } else if (companionType == CrossPointSettings::COMPANION_WOLF) {
+      bitmap = CompanionWolf96;
+      renderer.drawIcon(bitmap, x + (440 - 96) / 2, y + (230 - 96) / 2, 96, 96);
+      return;
+    }
+    return;
+  }
+
+  if (size == 200) {
+    // 200px home-screen slot. No 200px artwork exists yet, so draw the 128px
+    // art centered inside the slot. When CompanionNovaStageN_200 bitmaps are
+    // added to icons/companions.h, handle them here like the 128 case below.
+    drawCompanion(renderer, x + (200 - 128) / 2, y + (200 - 128) / 2, 128);
+    return;
+  }
+
+  bitmap = nullptr;
   if (size == 128) {
     if (companionType == CrossPointSettings::COMPANION_NOVA) {
       int stage = JourneyManager::getInstance().getJourneyStage();

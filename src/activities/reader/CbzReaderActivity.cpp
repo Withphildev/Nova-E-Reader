@@ -130,6 +130,7 @@ int32_t CbzReaderActivity::cbzPngSeek(PNGFILE *pFile, int32_t iPosition) {
 }
 
 void CbzReaderActivity::preparePage(bool goingBackward) {
+  LOG_INF("CBZ", "preparePage starting");
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
   // Extract to SD card
@@ -138,6 +139,7 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
     return;
   }
 
+  LOG_INF("CBZ", "extractPageToTempFile complete. Checking file signature...");
   // Open the temp file to check signature
   bool isPng = false;
   HalFile file;
@@ -156,14 +158,16 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
 
   if (isPng) {
     PNG png;
-    if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
+    LOG_INF("CBZ", "png.open starting...");
+  if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
       imgWidth = png.getWidth();
       imgHeight = png.getHeight();
       png.close();
     }
   } else {
     JPEGDEC jpeg;
-    if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
+    LOG_INF("CBZ", "jpeg.open starting...");
+  if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
       imgWidth = jpeg.getWidth();
       imgHeight = jpeg.getHeight();
       jpeg.close();
@@ -180,6 +184,7 @@ void CbzReaderActivity::preparePage(bool goingBackward) {
 }
 
 void CbzReaderActivity::renderPage() {
+  LOG_INF("CBZ", "renderPage starting");
   std::string tempPath = "/.crosspoint/cbz_temp.tmp";
   
   // Verify dimensions are known
@@ -218,13 +223,15 @@ void CbzReaderActivity::renderPage() {
 
   if (isPng) {
     PNG png;
-    if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
+    LOG_INF("CBZ", "png.open starting...");
+  if (png.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzPngRead, cbzPngSeek, pngDrawCallback) == PNG_SUCCESS) {
       png.decode(reinterpret_cast<void*>(&png), 0);
       png.close();
     }
   } else {
     JPEGDEC jpeg;
-    if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
+    LOG_INF("CBZ", "jpeg.open starting...");
+  if (jpeg.open(tempPath.c_str(), cbzFileOpen, cbzFileClose, cbzJpegRead, cbzJpegSeek, jpegDrawCallback)) {
       jpeg.decode(0, 0, 0);
       jpeg.close();
     }

@@ -25,10 +25,10 @@ bool CbzArchive::open(const std::string& cbzPath) {
     if (pathStr.empty() || pathStr[0] == '.' || pathStr.find("__MACOSX") != std::string::npos) {
       return;
     }
-    // Filter to JPEGs, PNGs, and BMPs
+    // Filter to JPEGs and PNGs — the render path decodes only these two
+    // (a BMP entry would fall into the JPEG decoder and show a blank page)
     if (FsHelpers::hasJpgExtension(pathStr) ||
-        FsHelpers::hasPngExtension(pathStr) ||
-        FsHelpers::hasBmpExtension(pathStr)) {
+        FsHelpers::hasPngExtension(pathStr)) {
       pages.push_back(pathStr);
     }
   });
